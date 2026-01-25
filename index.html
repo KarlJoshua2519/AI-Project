@@ -1,0 +1,432 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background: transparent;
+        font-family: "Segoe UI", "Outfit", sans-serif;
+        user-select: none;
+      }
+
+      .fullscreen-overlay {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+      }
+
+      .robot-face {
+        width: 650px;
+        height: 450px;
+        background: rgba(8, 8, 15, 0.9);
+        border-radius: 80px;
+        border: 3px solid #00f2ff;
+        box-shadow:
+          0 0 60px rgba(0, 242, 255, 0.4),
+          inset 0 0 40px rgba(0, 242, 255, 0.2);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        pointer-events: auto;
+        -webkit-app-region: drag;
+        cursor: grab;
+      }
+
+      .robot-face:active {
+        cursor: grabbing;
+      }
+
+      .eye-container {
+        display: flex;
+        gap: 110px;
+        margin-bottom: 70px;
+        -webkit-app-region: no-drag;
+      }
+
+      .eye-socket {
+        width: 140px;
+        height: 140px;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        cursor: pointer;
+      }
+
+      .eye {
+        width: 90px;
+        height: 90px;
+        background: #00f2ff;
+        border-radius: 50%;
+        position: relative;
+        box-shadow:
+          0 0 40px #00f2ff,
+          0 0 70px rgba(0, 242, 255, 0.7);
+        will-change: transform, height;
+        transition: height 0.1s ease;
+      }
+
+      .mouth-container {
+        width: 280px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-app-region: no-drag;
+        cursor: pointer;
+      }
+
+      .mouth {
+        width: 200px;
+        height: 12px;
+        background: #00f2ff;
+        border-radius: 20px;
+        box-shadow: 0 0 30px #00f2ff;
+        transition: 0.1s;
+      }
+
+      .status-panel {
+        position: absolute;
+        top: 35px;
+        left: 50px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #00f2ff;
+        font-size: 13px;
+        text-transform: uppercase;
+        font-weight: bold;
+        letter-spacing: 2px;
+      }
+
+      .level-meter {
+        width: 60px;
+        height: 6px;
+        background: #222;
+        border-radius: 3px;
+        overflow: hidden;
+        display: flex;
+      }
+
+      .level-bar {
+        height: 100%;
+        width: 0%;
+        background: #00f2ff;
+        transition: width 0.1s ease;
+      }
+
+      .indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #333;
+        transition: 0.3s;
+      }
+
+      .indicator.active {
+        background: #00f2ff;
+        box-shadow: 0 0 15px #00f2ff;
+      }
+
+      .close-btn {
+        position: absolute;
+        top: 25px;
+        right: 40px;
+        color: white;
+        font-size: 35px;
+        cursor: pointer;
+        opacity: 0.5;
+        -webkit-app-region: no-drag;
+        transition: 0.2s;
+      }
+
+      .close-btn:hover {
+        opacity: 1;
+        color: #ff4b2b;
+        transform: scale(1.1);
+      }
+
+      #video {
+        position: absolute;
+        visibility: hidden;
+        width: 1px;
+        height: 1px;
+      }
+
+      .subtitle {
+        position: absolute;
+        bottom: -60px;
+        width: 100%;
+        text-align: center;
+        color: rgba(0, 242, 255, 0.8);
+        font-size: 18px;
+        font-style: italic;
+        text-shadow: 0 0 10px rgba(0, 242, 255, 0.5);
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+  </head>
+  <body>
+    <div class="fullscreen-overlay">
+      <div class="robot-face" id="robotFace">
+        <div class="status-panel">
+          <div class="indicator" id="indicator"></div>
+          <span id="statusText">System Initializing...</span>
+          <div class="level-meter">
+            <div class="level-bar" id="levelBar"></div>
+          </div>
+        </div>
+
+        <div class="close-btn" id="closeBtn">×</div>
+
+        <div class="eye-container">
+          <div
+            class="eye-socket"
+            onclick="robotSpeak('Hey! Don\'t poke my eyes!')"
+          >
+            <div class="eye" id="leftEye"></div>
+          </div>
+          <div
+            class="eye-socket"
+            onclick="robotSpeak('Watch it! I need those to see you.')"
+          >
+            <div class="eye" id="rightEye"></div>
+          </div>
+        </div>
+
+        <div class="mouth-container" onclick="greetUser()">
+          <div class="mouth" id="mouth"></div>
+        </div>
+
+        <div class="subtitle" id="subtitle"></div>
+      </div>
+    </div>
+
+    <video id="video"></video>
+
+    <script>
+      const leftEye = document.getElementById("leftEye");
+      const rightEye = document.getElementById("rightEye");
+      const mouth = document.getElementById("mouth");
+      const statusText = document.getElementById("statusText");
+      const indicator = document.getElementById("indicator");
+      const videoElement = document.getElementById("video");
+      const subtitle = document.getElementById("subtitle");
+      const levelBar = document.getElementById("levelBar");
+
+      let targetX = 0;
+      let targetY = 0;
+      let currentX = 0;
+      let currentY = 0;
+      let isTalking = false;
+      let brainMouthOpen = 0;
+
+      // --- Speech Logic ---
+      function robotSpeak(text) {
+        if (window.speechSynthesis.speaking) return;
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.pitch = 1.1;
+        utterance.rate = 1.0;
+
+        // Select a friendly and natural sounding voice
+        const voices = window.speechSynthesis.getVoices();
+        utterance.voice =
+          voices.find(
+            (v) =>
+              v.name.includes("Natural") ||
+              v.name.includes("Zira") ||
+              v.name.includes("Google"),
+          ) || voices[0];
+
+        utterance.onstart = () => {
+          isTalking = true;
+          subtitle.innerText = text;
+        };
+
+        utterance.onend = () => {
+          isTalking = false;
+          subtitle.innerText = "";
+          mouth.style.height = "12px";
+          mouth.style.width = "200px";
+        };
+
+        window.speechSynthesis.speak(utterance);
+      }
+
+      function greetUser() {
+        const messages = [
+          "Hello there, human! I am observing your workspace.",
+          "Your external camera provides excellent clarity.",
+          "System check complete. All sensors operational.",
+          "I enjoy chasing your mouse, but watching you is better.",
+          "Did you know I am powered by artificial intelligence?",
+        ];
+        robotSpeak(messages[Math.floor(Math.random() * messages.length)]);
+      }
+
+      // --- UI Update Loop ---
+      let lastPulse = 0;
+      function animate() {
+        currentX += (targetX - currentX) * 0.2;
+        currentY += (targetY - currentY) * 0.2;
+
+        const transform = `translate(${currentX}px, ${currentY}px)`;
+        leftEye.style.transform = transform;
+        rightEye.style.transform = transform;
+
+        if (isTalking) {
+          const mHeight = 15 + Math.random() * 30;
+          const mWidth = 180 + Math.random() * 50;
+          mouth.style.height = mHeight + "px";
+          mouth.style.width = mWidth + "px";
+          mouth.style.borderRadius = "50%";
+        } else if (brainMouthOpen > 5) {
+          const mHeight = Math.min(60, 12 + brainMouthOpen * 2);
+          mouth.style.height = mHeight + "px";
+          mouth.style.width = 200 + mHeight + "px";
+          mouth.style.borderRadius = mHeight > 25 ? "50%" : "20px";
+        } else {
+          const pulse = 12 + Math.sin(Date.now() / 200) * 2;
+          mouth.style.height = pulse + "px";
+          mouth.style.width = "200px";
+          mouth.style.borderRadius = "20px";
+        }
+
+        requestAnimationFrame(animate);
+      }
+      animate();
+
+      // --- Blinking ---
+      function blink() {
+        if (leftEye.style.height === "4px") return; // Don't interrupt manual blink
+        leftEye.style.height = "4px";
+        rightEye.style.height = "4px";
+        setTimeout(() => {
+          leftEye.style.height = "90px";
+          rightEye.style.height = "90px";
+          setTimeout(blink, 2500 + Math.random() * 4000);
+        }, 120);
+      }
+      blink();
+
+      // --- Python Brain Integration ---
+      let isFetching = false;
+      let initializationComplete = false;
+      let lastProcessedCommand = "";
+      let lastChatResponse = "";
+
+      async function fetchBrainData() {
+        if (isFetching) return;
+        isFetching = true;
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+          
+          const response = await fetch("http://127.0.0.1:5000/data", { signal: controller.signal });
+          clearTimeout(timeoutId);
+          
+          const data = await response.json();
+
+          if (data && typeof data.x === 'number') {
+            targetX = (data.x - 0.5) * 150;
+            targetY = (data.y - 0.45) * 120;
+            brainMouthOpen = data.mouth_open || 0;
+
+            // Update Level Meter
+            if (levelBar && typeof data.audio_level === 'number') {
+              levelBar.style.width = data.audio_level + "%";
+            }
+
+            if (!initializationComplete) {
+               initializationComplete = true;
+               console.log("First data received, initialization complete.");
+            }
+
+            // Handle Voice Commands from Brain
+            if (data.last_command && data.last_command !== lastProcessedCommand) {
+              handleVoiceCommand(data.last_command);
+              lastProcessedCommand = data.last_command;
+              // Reset processed command after a while
+              setTimeout(() => { lastProcessedCommand = ""; }, 2000);
+            }
+
+            if (data.chat_response && data.chat_response !== lastChatResponse) {
+              robotSpeak(data.chat_response);
+              lastChatResponse = data.chat_response;
+            }
+
+            if (data.emotion === "talking" || brainMouthOpen > 5) {
+              indicator.style.background = "#00ff00";
+              statusText.innerText = "Host Detected";
+              indicator.classList.add("active");
+            } else {
+              indicator.style.background = "#00f2ff";
+              statusText.innerText = "Target Locked";
+              indicator.classList.add("active");
+            }
+          }
+        } catch (e) {
+          console.error("Brain connection error:", e);
+          statusText.innerText = "Connecting to Brain...";
+          indicator.classList.remove("active");
+        } finally {
+          isFetching = false;
+          setTimeout(fetchBrainData, 100); 
+        }
+      }
+
+      function handleVoiceCommand(text) {
+          console.log("Brain Recognized:", text);
+          
+          if (text.includes("hello")) {
+            robotSpeak("Hello! My sensors are active.");
+          } else if (text.includes("name")) {
+            robotSpeak("My name is P-Bot, also known as Prototype bot. It is a pleasure to meet you!");
+          } else if (text.includes("who are you")) {
+            robotSpeak("I am your personal AI assistant, powered by Python Brain and Windows Speech.");
+          } else if (text.includes("how are you")) {
+            robotSpeak("My systems are operating at peak efficiency, thank you for asking!");
+          } else if (text.includes("shut down") || text.includes("power off")) {
+            robotSpeak("Powering down. Goodbye!");
+            setTimeout(() => window.close(), 1500);
+          }
+      }
+
+      // Start polling
+      fetchBrainData();
+
+      // Initial Greeting
+      window.speechSynthesis.onvoiceschanged = () => {
+        setTimeout(
+          () => {
+            if (initializationComplete) {
+              robotSpeak("Neural bridge established. Voice sensors online.");
+            } else {
+              robotSpeak("Awaiting neural link. Please ensure Brain is active.");
+            }
+          },
+          2000,
+        );
+      };
+
+      document.getElementById("closeBtn").onclick = () => {
+        robotSpeak("Powering down.");
+        setTimeout(() => window.close(), 800);
+      };
+    </script>
+  </body>
+</html>

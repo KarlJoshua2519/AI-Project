@@ -1,0 +1,11 @@
+{
+  "name": "onscreen-robot",
+  "version": "1.0.0",
+  "main": "main.js",
+  "dependencies": {
+    "electron": "^33.0.0"
+  },
+  "scripts": {
+    "start": "electron ."
+  }
+}
